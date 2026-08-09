@@ -1,12 +1,10 @@
-name: Build APK
+name: Compilar APK
 
+# Se ejecuta cada vez que subes cambios a main, o manualmente desde la pestaña "Actions"
 on:
   push:
-    branches: [ main, master ]
+    branches: [main]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -15,26 +13,24 @@ jobs:
       - name: Descargar el código
         uses: actions/checkout@v4
 
-      - name: Configurar Node.js
+      - name: Configurar Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '20'
 
-      - name: Configurar Java (JDK 17)
+      - name: Configurar Java (necesario para Android/Gradle)
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Instalar dependencias
         run: npm install
 
-      - name: Agregar la plataforma Android
+      - name: Añadir la plataforma Android (se genera de cero cada vez)
         run: npx cap add android
 
-      - name: Sincronizar los archivos web
-        run: npx cap sync android
-
+      - name: Gener
       - name: Compilar el APK (debug)
         working-directory: android
         run: |
