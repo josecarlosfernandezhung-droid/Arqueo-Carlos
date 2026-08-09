@@ -443,75 +443,6 @@
             guardarOCompartirBlob(blob, filename);
         }
 
-        // Convierte un Blob a texto base64 (sin el prefijo "data:...;base64,"),
-        // que es lo que necesita el puente nativo de Android para escribir el archivo.
-        function blobToBase64(blob) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const resultado = reader.result || '';
-                    const base64 = String(resultado).split(',')[1] || '';
-                    resolve(base64);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-        }
-
-        // Guarda o comparte un Blob de forma que funcione tanto en un navegador normal
-        // (Chrome, Firefox...) como dentro de la app empaquetada en Android. Prueba, en
-        // este orden:
-        //   1) El plugin nativo "FileSaver" (solo existe dentro del APK): escribe el
-        //      archivo directamente en Descargas/ArqueoStock del teléfono. Este es el
-        //      método que realmente funciona dentro de la app instalada, porque el
-        //      WebView de Capacitor no tiene gestor de descargas ni soporte confiable
-        //      para compartir archivos.
-        //   2) El panel nativo de "Compartir" del navegador (funciona en Chrome normal).
-        //   3) La descarga clásica <a download> (funciona en Chrome normal de escritorio).
-        // Si el método 1 falla, se avisa con una alerta para no quedarnos sin pistas.
-        async function guardarOCompartirBlob(blob, nombreArchivo) {
-            const filePlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FileSaver;
-            if (filePlugin) {
-                try {
-                    const base64 = await blobToBase64(blob);
-                    const resultado = await filePlugin.saveFile({
-                        data: base64,
-                        filename: nombreArchivo,
-                        mimeType: blob.type || 'application/octet-stream'
-                    });
-                    alert('✅ Guardado: ' + (resultado && resultado.path ? resultado.path : nombreArchivo));
-                    return;
-                } catch (error) {
-                    alert('⚠️ No se pudo guardar el archivo: ' + (error && error.message ? error.message : error));
-                    return;
-                }
-            }
-            // MODO DIAGNÓSTICO TEMPORAL: si ves esta alerta, quiere decir que el plugin
-            // nativo FileSaver no se registró (window.Capacitor.Plugins.FileSaver no
-            // existe). Avísame con una foto de este mensaje.
-            alert('🔧 Diagnóstico: FileSaver no está disponible. Capacitor existe: ' +
-                (!!window.Capacitor) + ' | Plugins: ' +
-                (window.Capacitor && window.Capacitor.Plugins ? Object.keys(window.Capacitor.Plugins).join(', ') : 'ninguno'));
-            try {
-                const archivo = new File([blob], nombreArchivo, { type: blob.type || 'application/octet-stream' });
-                if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-                    await navigator.share({ files: [archivo], title: nombreArchivo });
-                    return;
-                }
-            } catch (error) {
-                if (error && error.name === 'AbortError') return; // el usuario cerró el panel, no pasa nada
-                // si falla por cualquier otro motivo, seguimos con la descarga clásica abajo
-            }
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = nombreArchivo;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 4000);
-        }
-
         // ---------- utils compatibles con la API usada en la app ----------
         function sheet_to_json(sheet, opts) {
             opts = opts || {};
@@ -555,6 +486,79 @@
             utils: { sheet_to_json, aoa_to_sheet, book_new, book_append_sheet }
         };
     })();
+
+    // Estas dos funciones van FUERA del cierre de XLSX a propósito: deben quedar en
+    // el ámbito global porque el resto de la app (exportarParaAdmin, exportarReportePDF,
+    // etc., que viven en otro bloque <script> más abajo) también necesita llamarlas.
+
+    // Convierte un Blob a texto base64 (sin el prefijo "data:...;base64,"),
+    // que es lo que necesita el plugin nativo de Android para escribir el archivo.
+    function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const resultado = reader.result || '';
+                const base64 = String(resultado).split(',')[1] || '';
+                resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    // Guarda o comparte un Blob de forma que funcione tanto en un navegador normal
+    // (Chrome, Firefox...) como dentro de la app empaquetada en Android. Prueba, en
+    // este orden:
+    //   1) El plugin nativo "FileSaver" (solo existe dentro del APK): escribe el
+    //      archivo directamente en Descargas/ArqueoStock del teléfono. Este es el
+    //      método que realmente funciona dentro de la app instalada, porque el
+    //      WebView de Capacitor no tiene gestor de descargas ni soporte confiable
+    //      para compartir archivos.
+    //   2) El panel nativo de "Compartir" del navegador (funciona en Chrome normal).
+    //   3) La descarga clásica <a download> (funciona en Chrome normal de escritorio).
+    // Si el método 1 falla, se avisa con una alerta para no quedarnos sin pistas.
+    async function guardarOCompartirBlob(blob, nombreArchivo) {
+        const filePlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FileSaver;
+        if (filePlugin) {
+            try {
+                const base64 = await blobToBase64(blob);
+                const resultado = await filePlugin.saveFile({
+                    data: base64,
+                    filename: nombreArchivo,
+                    mimeType: blob.type || 'application/octet-stream'
+                });
+                alert('✅ Guardado: ' + (resultado && resultado.path ? resultado.path : nombreArchivo));
+                return;
+            } catch (error) {
+                alert('⚠️ No se pudo guardar el archivo: ' + (error && error.message ? error.message : error));
+                return;
+            }
+        }
+        // MODO DIAGNÓSTICO TEMPORAL: si ves esta alerta, quiere decir que el plugin
+        // nativo FileSaver no se registró (window.Capacitor.Plugins.FileSaver no
+        // existe). Avísame con una foto de este mensaje.
+        alert('🔧 Diagnóstico: FileSaver no está disponible. Capacitor existe: ' +
+            (!!window.Capacitor) + ' | Plugins: ' +
+            (window.Capacitor && window.Capacitor.Plugins ? Object.keys(window.Capacitor.Plugins).join(', ') : 'ninguno'));
+        try {
+            const archivo = new File([blob], nombreArchivo, { type: blob.type || 'application/octet-stream' });
+            if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+                await navigator.share({ files: [archivo], title: nombreArchivo });
+                return;
+            }
+        } catch (error) {
+            if (error && error.name === 'AbortError') return; // el usuario cerró el panel, no pasa nada
+            // si falla por cualquier otro motivo, seguimos con la descarga clásica abajo
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nombreArchivo;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
     </script>
     <style>
         :root {
