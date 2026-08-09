@@ -486,6 +486,12 @@
                     return;
                 }
             }
+            // MODO DIAGNÓSTICO TEMPORAL: si ves esta alerta, quiere decir que el plugin
+            // nativo FileSaver no se registró (window.Capacitor.Plugins.FileSaver no
+            // existe). Avísame con una foto de este mensaje.
+            alert('🔧 Diagnóstico: FileSaver no está disponible. Capacitor existe: ' +
+                (!!window.Capacitor) + ' | Plugins: ' +
+                (window.Capacitor && window.Capacitor.Plugins ? Object.keys(window.Capacitor.Plugins).join(', ') : 'ninguno'));
             try {
                 const archivo = new File([blob], nombreArchivo, { type: blob.type || 'application/octet-stream' });
                 if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
@@ -2802,6 +2808,17 @@
     </div>
 
     <script>
+        // Manejador global de errores: si algo falla en cualquier parte de la app,
+        // muestra el mensaje exacto en pantalla en vez de fallar en silencio (el
+        // WebView de Android no muestra la consola de errores como Chrome).
+        window.addEventListener('error', function (event) {
+            alert('⚠️ Error en la app: ' + event.message + (event.filename ? ' (línea ' + event.lineno + ')' : ''));
+        });
+        window.addEventListener('unhandledrejection', function (event) {
+            const motivo = event.reason && event.reason.message ? event.reason.message : event.reason;
+            alert('⚠️ Error en la app: ' + motivo);
+        });
+
         let productos = [];
         let modoConteo = false;
         let filtroConteo = 'todos'; // 'todos' | 'sinContar' | 'contados'
