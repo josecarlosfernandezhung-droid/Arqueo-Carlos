@@ -461,21 +461,29 @@
         // Guarda o comparte un Blob de forma que funcione tanto en un navegador normal
         // (Chrome, Firefox...) como dentro de la app empaquetada en Android. Prueba, en
         // este orden:
-        //   1) El puente nativo "AndroidSaver" (solo existe dentro del APK): escribe el
+        //   1) El plugin nativo "FileSaver" (solo existe dentro del APK): escribe el
         //      archivo directamente en Descargas/ArqueoStock del teléfono. Este es el
         //      método que realmente funciona dentro de la app instalada, porque el
         //      WebView de Capacitor no tiene gestor de descargas ni soporte confiable
         //      para compartir archivos.
         //   2) El panel nativo de "Compartir" del navegador (funciona en Chrome normal).
         //   3) La descarga clásica <a download> (funciona en Chrome normal de escritorio).
+        // Si el método 1 falla, se avisa con una alerta para no quedarnos sin pistas.
         async function guardarOCompartirBlob(blob, nombreArchivo) {
-            if (window.AndroidSaver && typeof window.AndroidSaver.saveFile === 'function') {
+            const filePlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FileSaver;
+            if (filePlugin) {
                 try {
                     const base64 = await blobToBase64(blob);
-                    window.AndroidSaver.saveFile(base64, nombreArchivo, blob.type || 'application/octet-stream');
+                    const resultado = await filePlugin.saveFile({
+                        data: base64,
+                        filename: nombreArchivo,
+                        mimeType: blob.type || 'application/octet-stream'
+                    });
+                    alert('✅ Guardado: ' + (resultado && resultado.path ? resultado.path : nombreArchivo));
                     return;
                 } catch (error) {
-                    // si el puente nativo falla por algún motivo, seguimos probando abajo
+                    alert('⚠️ No se pudo guardar el archivo: ' + (error && error.message ? error.message : error));
+                    return;
                 }
             }
             try {
@@ -6552,7 +6560,7 @@
             // reporte como un archivo .html independiente (con su propio estilo de
             // impresión incluido) que se puede abrir, compartir o imprimir/guardar como
             // PDF desde cualquier navegador del teléfono.
-            if (window.AndroidSaver && typeof window.AndroidSaver.saveFile === 'function') {
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FileSaver) {
                 const htmlCompleto = `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8">
 <title>Reporte de Arqueó de Stock</title>
@@ -6569,7 +6577,6 @@
 </head><body>${cont.innerHTML}</body></html>`;
                 const blobHtml = new Blob([htmlCompleto], { type: 'text/html' });
                 guardarOCompartirBlob(blobHtml, `Reporte_Arqueo_${new Date().toISOString().split('T')[0]}.html`);
-                alert('📄 Reporte guardado. Ábrelo con el navegador de tu teléfono y usa su opción de "Imprimir" para guardarlo como PDF si lo necesitas.');
                 return;
             }
 
