@@ -443,13 +443,41 @@
             guardarOCompartirBlob(blob, filename);
         }
 
+        // Convierte un Blob a texto base64 (sin el prefijo "data:...;base64,"),
+        // que es lo que necesita el puente nativo de Android para escribir el archivo.
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const resultado = reader.result || '';
+                    const base64 = String(resultado).split(',')[1] || '';
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
         // Guarda o comparte un Blob de forma que funcione tanto en un navegador normal
-        // (Chrome, Firefox...) como dentro de la app empaquetada en Android, donde el
-        // truco clásico de <a download> muchas veces no hace nada porque el WebView no
-        // tiene un gestor de descargas propio. Primero intenta abrir el panel nativo de
-        // "Compartir/Guardar" del teléfono (que sí sabe guardar en Archivos, Drive, etc).
-        // Si eso no está disponible, cae de vuelta al método clásico de descarga web.
+        // (Chrome, Firefox...) como dentro de la app empaquetada en Android. Prueba, en
+        // este orden:
+        //   1) El puente nativo "AndroidSaver" (solo existe dentro del APK): escribe el
+        //      archivo directamente en Descargas/ArqueoStock del teléfono. Este es el
+        //      método que realmente funciona dentro de la app instalada, porque el
+        //      WebView de Capacitor no tiene gestor de descargas ni soporte confiable
+        //      para compartir archivos.
+        //   2) El panel nativo de "Compartir" del navegador (funciona en Chrome normal).
+        //   3) La descarga clásica <a download> (funciona en Chrome normal de escritorio).
         async function guardarOCompartirBlob(blob, nombreArchivo) {
+            if (window.AndroidSaver && typeof window.AndroidSaver.saveFile === 'function') {
+                try {
+                    const base64 = await blobToBase64(blob);
+                    window.AndroidSaver.saveFile(base64, nombreArchivo, blob.type || 'application/octet-stream');
+                    return;
+                } catch (error) {
+                    // si el puente nativo falla por algún motivo, seguimos probando abajo
+                }
+            }
             try {
                 const archivo = new File([blob], nombreArchivo, { type: blob.type || 'application/octet-stream' });
                 if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
@@ -6518,6 +6546,32 @@
                     <tbody>${filas}</tbody>
                 </table>
             `;
+
+            // Dentro del APK, window.print() no hace nada porque el WebView de la app
+            // no tiene un servicio de impresión conectado. En ese caso guardamos el
+            // reporte como un archivo .html independiente (con su propio estilo de
+            // impresión incluido) que se puede abrir, compartir o imprimir/guardar como
+            // PDF desde cualquier navegador del teléfono.
+            if (window.AndroidSaver && typeof window.AndroidSaver.saveFile === 'function') {
+                const htmlCompleto = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<title>Reporte de Arqueó de Stock</title>
+<style>
+    body { font-family: Arial, sans-serif; color:#000; background:#fff; padding:16px; }
+    h1 { font-size:20px; margin-bottom:2px; }
+    .rep-meta { font-size:12px; color:#444; margin-bottom:14px; }
+    .rep-stats { display:flex; flex-wrap:wrap; gap:14px; margin:12px 0; font-size:13px; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th, td { border:1px solid #ccc; padding:6px 8px; text-align:left; }
+    th { background:#eee; }
+    @media print { body { padding:0; } }
+</style>
+</head><body>${cont.innerHTML}</body></html>`;
+                const blobHtml = new Blob([htmlCompleto], { type: 'text/html' });
+                guardarOCompartirBlob(blobHtml, `Reporte_Arqueo_${new Date().toISOString().split('T')[0]}.html`);
+                alert('📄 Reporte guardado. Ábrelo con el navegador de tu teléfono y usa su opción de "Imprimir" para guardarlo como PDF si lo necesitas.');
+                return;
+            }
 
             setTimeout(() => window.print(), 80);
         }
