@@ -440,7 +440,11 @@
 
             const zipBytes = zipStore(files);
             const blob = new Blob([zipBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            guardarOCompartirBlob(blob, filename);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
         // ---------- utils compatibles con la API usada en la app ----------
@@ -486,79 +490,6 @@
             utils: { sheet_to_json, aoa_to_sheet, book_new, book_append_sheet }
         };
     })();
-
-    // Estas dos funciones van FUERA del cierre de XLSX a propósito: deben quedar en
-    // el ámbito global porque el resto de la app (exportarParaAdmin, exportarReportePDF,
-    // etc., que viven en otro bloque <script> más abajo) también necesita llamarlas.
-
-    // Convierte un Blob a texto base64 (sin el prefijo "data:...;base64,"),
-    // que es lo que necesita el plugin nativo de Android para escribir el archivo.
-    function blobToBase64(blob) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const resultado = reader.result || '';
-                const base64 = String(resultado).split(',')[1] || '';
-                resolve(base64);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    }
-
-    // Guarda o comparte un Blob de forma que funcione tanto en un navegador normal
-    // (Chrome, Firefox...) como dentro de la app empaquetada en Android. Prueba, en
-    // este orden:
-    //   1) El plugin nativo "FileSaver" (solo existe dentro del APK): escribe el
-    //      archivo directamente en Descargas/ArqueoStock del teléfono. Este es el
-    //      método que realmente funciona dentro de la app instalada, porque el
-    //      WebView de Capacitor no tiene gestor de descargas ni soporte confiable
-    //      para compartir archivos.
-    //   2) El panel nativo de "Compartir" del navegador (funciona en Chrome normal).
-    //   3) La descarga clásica <a download> (funciona en Chrome normal de escritorio).
-    // Si el método 1 falla, se avisa con una alerta para no quedarnos sin pistas.
-    async function guardarOCompartirBlob(blob, nombreArchivo) {
-        const filePlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FileSaver;
-        if (filePlugin) {
-            try {
-                const base64 = await blobToBase64(blob);
-                const resultado = await filePlugin.saveFile({
-                    data: base64,
-                    filename: nombreArchivo,
-                    mimeType: blob.type || 'application/octet-stream'
-                });
-                alert('✅ Guardado: ' + (resultado && resultado.path ? resultado.path : nombreArchivo));
-                return;
-            } catch (error) {
-                alert('⚠️ No se pudo guardar el archivo: ' + (error && error.message ? error.message : error));
-                return;
-            }
-        }
-        // MODO DIAGNÓSTICO TEMPORAL: si ves esta alerta, quiere decir que el plugin
-        // nativo FileSaver no se registró (window.Capacitor.Plugins.FileSaver no
-        // existe). Avísame con una foto de este mensaje.
-        alert('🔧 Diagnóstico: FileSaver no está disponible. Capacitor existe: ' +
-            (!!window.Capacitor) + ' | Plugins: ' +
-            (window.Capacitor && window.Capacitor.Plugins ? Object.keys(window.Capacitor.Plugins).join(', ') : 'ninguno'));
-        try {
-            const archivo = new File([blob], nombreArchivo, { type: blob.type || 'application/octet-stream' });
-            if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-                await navigator.share({ files: [archivo], title: nombreArchivo });
-                return;
-            }
-        } catch (error) {
-            if (error && error.name === 'AbortError') return; // el usuario cerró el panel, no pasa nada
-            // si falla por cualquier otro motivo, seguimos con la descarga clásica abajo
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = nombreArchivo;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 4000);
-    }
     </script>
     <style>
         :root {
@@ -693,6 +624,7 @@
         body {
             font-family: var(--font-display);
             background: var(--bg);
+            color: var(--text);
             padding: 0;
             margin: 0;
             transition: background 0.25s ease, color 0.25s ease;
@@ -1495,17 +1427,17 @@
         .real-split-row {
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 4px;
         }
 
         .real-split-label {
-            font-size: 9.5px;
+            font-size: 9px;
             font-weight: 700;
             color: var(--accent);
-            width: 36px;
+            width: 30px;
             flex-shrink: 0;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
         }
 
         .real-split-row.placa .real-split-label {
@@ -1515,9 +1447,27 @@
         .real-split-input {
             width: 100% !important;
             min-width: 0;
-            padding: 8px 3px !important;
+            padding: 8px 2px !important;
             font-size: 14px !important;
             font-weight: 700;
+            text-align: center;
+        }
+
+        /* Números más largos: bajamos la letra un poco para que entren completos
+           en vez de recortarse (4, 5 o 6+ dígitos). */
+        .real-split-input.len4 {
+            font-size: 12.5px !important;
+            letter-spacing: -0.3px;
+        }
+
+        .real-split-input.len5 {
+            font-size: 11px !important;
+            letter-spacing: -0.4px;
+        }
+
+        .real-split-input.len6 {
+            font-size: 9.5px !important;
+            letter-spacing: -0.5px;
         }
 
         .stepper-btn {
@@ -1525,7 +1475,7 @@
             background: var(--info-soft);
             color: var(--accent);
             font-weight: 700;
-            width: 30px;
+            width: 26px;
             height: 34px;
             border-radius: 6px;
             font-size: 17px;
@@ -1843,14 +1793,26 @@
             }
 
             .stepper-btn {
-                width: 34px;
+                width: 30px;
                 height: 38px;
                 font-size: 19px;
             }
 
             .real-split-input {
                 font-size: 15px !important;
-                padding: 9px 3px !important;
+                padding: 9px 2px !important;
+            }
+
+            .real-split-input.len4 {
+                font-size: 13.5px !important;
+            }
+
+            .real-split-input.len5 {
+                font-size: 12px !important;
+            }
+
+            .real-split-input.len6 {
+                font-size: 10.5px !important;
             }
         }
 
@@ -2550,8 +2512,8 @@
                         <div style="background:var(--info-soft); border-radius:10px; padding:12px; margin-bottom:15px;">
                             <label style="font-size:12px; font-weight:700; color:var(--info-dark); display:block; margin-bottom:6px;">🔄 ¿Vas a volver a contar? Busca el producto aquí</label>
                             <div style="display:flex; gap:8px;">
-                                <input type="text" id="buscarRecuento" list="listaProductosDatalist" placeholder="Nombre o código del producto..." style="flex:1 1 0; min-width:0; width:auto; padding:10px; font-size:14px; border:1px solid var(--border-strong); border-radius:6px;">
-                                <button type="button" class="btn" style="background:var(--info-dark); color:white; padding:10px 14px;" onclick="buscarProductoParaRecontar()">Contar</button>
+                                <input type="text" id="buscarRecuento" list="listaProductosDatalist" placeholder="Nombre o código del producto..." style="flex:1; min-width:0; padding:10px; font-size:15px; border:1px solid var(--border-strong); border-radius:6px;">
+                                <button type="button" class="btn" style="width:auto; flex-shrink:0; background:var(--info-dark); color:white; padding:10px 14px; margin:0; white-space:nowrap;" onclick="buscarProductoParaRecontar()">Contar</button>
                             </div>
                             <p style="font-size:10px; color:var(--info-dark); margin-top:6px;">Sirve tanto para volver a contar un producto que ya salió como problema, como para uno que se te había pasado por completo.</p>
                         </div>
@@ -2812,17 +2774,6 @@
     </div>
 
     <script>
-        // Manejador global de errores: si algo falla en cualquier parte de la app,
-        // muestra el mensaje exacto en pantalla en vez de fallar en silencio (el
-        // WebView de Android no muestra la consola de errores como Chrome).
-        window.addEventListener('error', function (event) {
-            alert('⚠️ Error en la app: ' + event.message + (event.filename ? ' (línea ' + event.lineno + ')' : ''));
-        });
-        window.addEventListener('unhandledrejection', function (event) {
-            const motivo = event.reason && event.reason.message ? event.reason.message : event.reason;
-            alert('⚠️ Error en la app: ' + motivo);
-        });
-
         let productos = [];
         let modoConteo = false;
         let filtroConteo = 'todos'; // 'todos' | 'sinContar' | 'contados'
@@ -3781,10 +3732,15 @@
                             codigo: p.codigo || '',
                             stockEsperado: parseInt(p.stockEsperado) || 0,
                             stockReal: p.stockReal === null || p.stockReal === undefined || p.stockReal === '' ? null : (parseInt(p.stockReal) || 0),
+                            stockCuarto: p.stockCuarto === null || p.stockCuarto === undefined || p.stockCuarto === '' ? null : (parseInt(p.stockCuarto) || 0),
+                            stockPlaca: p.stockPlaca === null || p.stockPlaca === undefined || p.stockPlaca === '' ? null : (parseInt(p.stockPlaca) || 0),
+                            horaConteoCuarto: p.horaConteoCuarto || null,
+                            horaConteoPlaca: p.horaConteoPlaca || null,
                             precio: parseFloat(p.precio) || 0,
                             notas: p.notas || '',
                             ventasHoy: parseInt(p.ventasHoy) || 0,
                             ventas: Array.isArray(p.ventas) ? p.ventas : [],
+                            ajustes: Array.isArray(p.ajustes) ? p.ajustes : [],
                             horaConteo: p.horaConteo || null,
                             stockFinalMaquina: p.stockFinalMaquina === null || p.stockFinalMaquina === undefined || p.stockFinalMaquina === '' ? null : (parseInt(p.stockFinalMaquina) || 0)
                         }));
@@ -3820,6 +3776,94 @@
                 }
             };
             reader.readAsArrayBuffer(file);
+        }
+
+        // ¿Este producto (existente o recién importado) trae algún dato de conteo,
+        // ya sea el total viejo (stockReal) o el desglose nuevo (stockCuarto/stockPlaca)?
+        // Devuelve una clase de tamaño de letra según la cantidad de dígitos del
+        // número, para que valores grandes (4, 5 o 6+ dígitos) sigan siendo
+        // legibles dentro de la casilla angosta de Cuarto/Placa.
+        function claseTamanoReal(valor) {
+            const len = String(valor ?? '').replace('-', '').length;
+            if (len >= 6) return 'len6';
+            if (len === 5) return 'len5';
+            if (len === 4) return 'len4';
+            return '';
+        }
+
+        function tieneAlgunConteo(p) {
+            return (p.stockReal !== null && p.stockReal !== undefined)
+                || (p.stockCuarto !== null && p.stockCuarto !== undefined)
+                || (p.stockPlaca !== null && p.stockPlaca !== undefined);
+        }
+
+        // ¿horaA ocurrió antes (o al mismo tiempo) que horaB? Si falta una de las dos,
+        // se asume que la que sí tiene hora fue la que realmente contó primero.
+        function conteoOcurrioPrimero(horaA, horaB) {
+            if (!horaA) return false;
+            if (!horaB) return true;
+            return new Date(horaA).getTime() <= new Date(horaB).getTime();
+        }
+
+        // Fusiona el conteo de "existente" (lo que ya tenías) con "n" (lo que trae el
+        // archivo que estás cargando), casilla por casilla: Cuarto se compara solo con
+        // Cuarto, Placa solo con Placa, y en cada una se conserva el valor de quien
+        // contó primero (por hora). Nunca se suman los dos archivos en una sola casilla.
+        // Devuelve true si algo cambió respecto a lo que ya había.
+        function fusionarCuartoPlaca(existente, n) {
+            // Si el producto venía de un conteo "de una pieza" (sin desglose Cuarto/Placa),
+            // lo migramos primero para no perder ese valor al fusionar.
+            migrarSplitReal(existente);
+            migrarSplitReal(n);
+
+            const antesCuarto = existente.stockCuarto;
+            const antesPlaca = existente.stockPlaca;
+            const antesReal = existente.stockReal;
+            const antesNotas = existente.notas;
+
+            ['stockCuarto', 'stockPlaca'].forEach(campo => {
+                const campoHora = campo === 'stockCuarto' ? 'horaConteoCuarto' : 'horaConteoPlaca';
+                const existenteTiene = existente[campo] !== null && existente[campo] !== undefined;
+                const nuevoTiene = n[campo] !== null && n[campo] !== undefined;
+
+                if (existenteTiene && nuevoTiene) {
+                    // Ambos archivos contaron esta misma casilla: se queda el que contó primero.
+                    if (conteoOcurrioPrimero(n[campoHora], existente[campoHora])) {
+                        existente[campo] = n[campo];
+                        existente[campoHora] = n[campoHora];
+                    }
+                } else if (!existenteTiene && nuevoTiene) {
+                    // Solo el archivo nuevo trae esta casilla: se toma tal cual.
+                    existente[campo] = n[campo];
+                    existente[campoHora] = n[campoHora];
+                }
+                // Si solo el existente tenía esta casilla, se deja como estaba.
+            });
+
+            // Recalculamos el total a partir de Cuarto + Placa ya fusionados.
+            const cuarto = (existente.stockCuarto === null || existente.stockCuarto === undefined) ? null : existente.stockCuarto;
+            const placa = (existente.stockPlaca === null || existente.stockPlaca === undefined) ? null : existente.stockPlaca;
+            if (cuarto === null && placa === null) {
+                existente.stockReal = (n.stockReal !== null && n.stockReal !== undefined) ? n.stockReal : existente.stockReal;
+            } else {
+                existente.stockReal = (cuarto || 0) + (placa || 0);
+            }
+
+            // La hora de conteo general es la más reciente entre Cuarto y Placa.
+            const horas = [existente.horaConteoCuarto, existente.horaConteoPlaca].filter(Boolean);
+            if (horas.length) {
+                existente.horaConteo = horas.reduce((a, b) => new Date(a) > new Date(b) ? a : b);
+            }
+
+            // Si no tenías nota escrita y el archivo nuevo trae una, se conserva (no se pierde info).
+            if ((!existente.notas || String(existente.notas).trim() === '') && n.notas) {
+                existente.notas = n.notas;
+            }
+
+            return existente.stockCuarto !== antesCuarto
+                || existente.stockPlaca !== antesPlaca
+                || existente.stockReal !== antesReal
+                || existente.notas !== antesNotas;
         }
 
         function agregarProductosAlListado(nuevos) {
@@ -3866,6 +3910,7 @@
             let actualizados = 0;
             let agregados = 0;
             let conservados = 0;
+            let fusionados = 0;
 
             nuevos.forEach(n => {
                 const existente = encontrarProducto(n.nombre, n.codigo, false);
@@ -3874,16 +3919,29 @@
                     agregados++;
                     return;
                 }
-                if (existente.stockReal !== null && existente.stockReal !== undefined) {
-                    // Ya lo habías contado: se deja intacto, no se toca nada.
+
+                const existenteTieneConteo = tieneAlgunConteo(existente);
+                const nuevoTraeConteo = tieneAlgunConteo(n);
+
+                if (!existenteTieneConteo) {
+                    // Todavía no lo habías contado: se actualiza con lo que trae el archivo nuevo.
+                    const idOriginal = existente.id;
+                    Object.keys(existente).forEach(k => delete existente[k]);
+                    Object.assign(existente, n, { id: idOriginal });
+                    actualizados++;
+                    return;
+                }
+
+                if (!nuevoTraeConteo) {
+                    // El archivo nuevo no trae ningún conteo para este producto: se deja intacto.
                     conservados++;
                     return;
                 }
-                // Todavía no lo habías contado: se actualiza con lo que trae el archivo nuevo.
-                const idOriginal = existente.id;
-                Object.keys(existente).forEach(k => delete existente[k]);
-                Object.assign(existente, n, { id: idOriginal });
-                actualizados++;
+
+                // Los dos archivos traen conteo: fusionamos Cuarto y Placa por separado,
+                // conservando en cada casilla a quien la contó primero (sin sumar dos veces).
+                const huboCambio = fusionarCuartoPlaca(existente, n);
+                if (huboCambio) fusionados++; else conservados++;
             });
 
             ordenarProductos();
@@ -3906,7 +3964,7 @@
             document.getElementById('fileInput').value = '';
             guardarProgreso();
 
-            alert(`✅ Inventario cargado.\n${agregados} producto(s) nuevo(s) agregado(s).\n${actualizados} producto(s) sin contar actualizado(s).\n🔒 ${conservados} producto(s) que ya habías contado quedaron intactos.`);
+            alert(`✅ Inventario cargado.\n${agregados} producto(s) nuevo(s) agregado(s).\n${actualizados} producto(s) sin contar actualizado(s).\n🔀 ${fusionados} producto(s) fusionados (Cuarto/Placa combinados, se conservó quien contó primero en cada casilla).\n🔒 ${conservados} producto(s) sin cambios.`);
         }
 
         // ===== MAPEO MANUAL DE COLUMNAS (selector "qué columna es cada cosa") =====
@@ -4510,15 +4568,15 @@
                             <div class="real-split-row cuarto">
                                 <span class="real-split-label">Cuarto</span>
                                 <button type="button" class="stepper-btn" tabindex="-1" onclick="ajustarRealParcial(${p.id}, 'stockCuarto', -1)">−</button>
-                                <input type="number" min="0" class="real-split-input" value="${p.stockCuarto ?? ''}"
-                                       onchange="actualizarRealParcial(${p.id}, 'stockCuarto', this.value)" placeholder="0">
+                                <input type="number" min="0" class="real-split-input ${claseTamanoReal(p.stockCuarto)}" value="${p.stockCuarto ?? ''}"
+                                       onchange="actualizarRealParcial(${p.id}, 'stockCuarto', this.value)" oninput="this.className = 'real-split-input ' + claseTamanoReal(this.value)" placeholder="0">
                                 <button type="button" class="stepper-btn" tabindex="-1" onclick="ajustarRealParcial(${p.id}, 'stockCuarto', 1)">+</button>
                             </div>
                             <div class="real-split-row placa">
                                 <span class="real-split-label">Placa</span>
                                 <button type="button" class="stepper-btn" tabindex="-1" onclick="ajustarRealParcial(${p.id}, 'stockPlaca', -1)">−</button>
-                                <input type="number" min="0" class="real-split-input" value="${p.stockPlaca ?? ''}"
-                                       onchange="actualizarRealParcial(${p.id}, 'stockPlaca', this.value)" placeholder="0">
+                                <input type="number" min="0" class="real-split-input ${claseTamanoReal(p.stockPlaca)}" value="${p.stockPlaca ?? ''}"
+                                       onchange="actualizarRealParcial(${p.id}, 'stockPlaca', this.value)" oninput="this.className = 'real-split-input ' + claseTamanoReal(this.value)" placeholder="0">
                                 <button type="button" class="stepper-btn" tabindex="-1" onclick="ajustarRealParcial(${p.id}, 'stockPlaca', 1)">+</button>
                             </div>
                             <div class="real-split-total">Total: <strong>${p.stockReal ?? '-'}</strong></div>
@@ -5606,7 +5664,14 @@
         function descargarCampoComoArchivo(idCampo, nombreArchivo) {
             const campo = document.getElementById(idCampo);
             const blob = new Blob([campo.value], { type: 'text/plain' });
-            guardarOCompartirBlob(blob, nombreArchivo || 'codigo-conexion.txt');
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nombreArchivo || 'codigo-conexion.txt';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
         }
 
         function decodificarSDP(texto) {
@@ -5903,8 +5968,15 @@
             }, null, 2);
 
             const blob = new Blob([datos], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
             const nombreArchivo = nombreContador.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 20);
-            guardarOCompartirBlob(blob, `arqueo_${nombreArchivo}_${new Date().toISOString().split('T')[0]}.json`);
+            a.href = url;
+            a.download = `arqueo_${nombreArchivo}_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         function resumenAjustesTexto(p) {
@@ -6575,31 +6647,6 @@
                     <tbody>${filas}</tbody>
                 </table>
             `;
-
-            // Dentro del APK, window.print() no hace nada porque el WebView de la app
-            // no tiene un servicio de impresión conectado. En ese caso guardamos el
-            // reporte como un archivo .html independiente (con su propio estilo de
-            // impresión incluido) que se puede abrir, compartir o imprimir/guardar como
-            // PDF desde cualquier navegador del teléfono.
-            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FileSaver) {
-                const htmlCompleto = `<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8">
-<title>Reporte de Arqueó de Stock</title>
-<style>
-    body { font-family: Arial, sans-serif; color:#000; background:#fff; padding:16px; }
-    h1 { font-size:20px; margin-bottom:2px; }
-    .rep-meta { font-size:12px; color:#444; margin-bottom:14px; }
-    .rep-stats { display:flex; flex-wrap:wrap; gap:14px; margin:12px 0; font-size:13px; }
-    table { width:100%; border-collapse:collapse; font-size:12px; }
-    th, td { border:1px solid #ccc; padding:6px 8px; text-align:left; }
-    th { background:#eee; }
-    @media print { body { padding:0; } }
-</style>
-</head><body>${cont.innerHTML}</body></html>`;
-                const blobHtml = new Blob([htmlCompleto], { type: 'text/html' });
-                guardarOCompartirBlob(blobHtml, `Reporte_Arqueo_${new Date().toISOString().split('T')[0]}.html`);
-                return;
-            }
 
             setTimeout(() => window.print(), 80);
         }
