@@ -134,6 +134,18 @@ jobs:
       - name: Sincronizar los archivos web con el proyecto Android
         run: npx cap sync android
 
+      - name: Permitir conexión a la PC por WiFi (stock en vivo)
+        run: |
+          grep -q usesCleartextTraffic android/app/src/main/AndroidManifest.xml || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+          python3 - <<'PY'
+          import json
+          p = 'android/app/src/main/assets/capacitor.config.json'
+          c = json.load(open(p, encoding='utf-8'))
+          c.setdefault('android', {})['allowMixedContent'] = True
+          json.dump(c, open(p, 'w', encoding='utf-8'), ensure_ascii=False)
+          print(open(p, encoding='utf-8').read())
+          PY
+
       - name: Dar permisos de ejecución a gradlew
         run: chmod +x android/gradlew
 
