@@ -7002,8 +7002,8 @@ t.sheetStubs=true}if(t.type=="array"){t.type="binary";var a=xk(e,t);t.type="arra
         busy = true;
         const b = base(cfg.ip, cfg.puerto);
         try {
-            let r = srvViejo ? null : await get('/api/almacen/stockvivo', b);
-            if (!r || r.status === 404 || !r.data) { srvViejo = true; r = await get('/api/catalogo', b); }
+            let r = srvViejo ? null : await get('/api/almacen/stockvivo', b, 10000);
+            if (!r || r.status === 404 || !r.data) { srvViejo = true; r = await get('/api/catalogo', b, 10000); }
             if (r.status === 402) throw new Error('licencia del servidor vencida');
             if (r.status !== 200 || !r.data) throw new Error('respuesta inesperada ' + r.status);
             construir(r.data); ok = true; err = '';
